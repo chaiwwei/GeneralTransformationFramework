@@ -1,0 +1,111 @@
+package ot;
+
+import com.OpType;
+import com.StringOperation;
+import com.VectorClock;
+
+public class OTOperation {
+	public OTOperation(StringOperation op, VectorClock vc, int sid) {
+		this.op = op;
+		this.vc = vc;
+		this.sid = sid;
+		this.svc = vc.getSum();
+		// TODO Auto-generated constructor stub
+		this.isCopy = true;
+	}
+
+	boolean isCopy;
+	private VectorClock vc;
+	public int sid;
+	public int svc;
+	public StringOperation op;
+
+	public VectorClock getVC() {
+		return this.vc;
+	}
+
+	public int getSeq(int sid) {
+		return this.vc.get(sid);
+	}
+
+	public boolean isCopy() {
+		return isCopy;
+	}
+
+	public OTOperation clone() {
+		OTOperation copy = new OTOperation(this.op.clone(), this.vc, this.sid);
+		return copy;
+	}
+
+	public OTOperation shallowCopy() {
+		OTOperation copy = new OTOperation(this.op, this.vc, this.sid);
+		copy.isCopy = false;
+		return copy;
+	}
+
+	public boolean isConcurrent(OTOperation op2) {
+		boolean result = true;
+		if (this.getSeq(this.sid) <= op2.getSeq(this.sid)) {
+			result = false;
+		} else if (this.getSeq(op2.sid) >= op2.getSeq(op2.sid)) {
+			result = false;
+		}
+		return result;
+	}
+
+	public int totalOrder(OTOperation op2) {
+		if (this.svc == op2.svc) {
+			return this.sid - op2.sid;
+		} else {
+			return this.svc - op2.svc;
+		}
+	}
+
+	public StringOperation getSOP() {
+		return this.op;
+	}
+
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		if (this.op.type == OpType.ins) {
+			sb.append("ins|");
+			sb.append(this.op.pos);
+			sb.append("|");
+			sb.append(op.str);
+			sb.append("|");
+			sb.append(this.sid);
+			sb.append("|");
+			sb.append(this.vc.toString());
+		} else {
+			sb.append("del|");
+			sb.append(this.op.pos);
+			sb.append("|");
+			sb.append(op.len);
+			sb.append("|");
+			sb.append(this.sid);
+			sb.append("|");
+			sb.append(this.vc.toString());
+		}
+		return sb.toString();
+	}
+
+	public static OTOperation fromString(String opStr) {
+		String[] paras = opStr.split("\\|");
+		String type = paras[0];
+		String pos = paras[1];
+		String str = paras[2];
+		String sid = paras[3];
+		String[] vcStr = paras[4].split(",");
+		VectorClock vc = VectorClock.fromString(vcStr);
+
+		OTOperation op = null;
+		if (type.equals("ins")) {
+			op = new OTOperation(StringOperation.createInsOperation(Integer.parseInt(pos), str), vc,
+					Integer.parseInt(sid));
+		} else {
+			op = new OTOperation(StringOperation.createDelOperation(Integer.parseInt(pos), Integer.parseInt(str)), vc,
+					Integer.parseInt(sid));
+		}
+		return op;
+	}
+}

@@ -1,0 +1,214 @@
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+import com.GTAlgorithm;
+import com.StringOperation;
+import com.TextDocument;
+
+public class TestSiniImpact {
+    static int siteNum = 3;
+    static Random rand = new Random(10);
+    static String S = "abcdefghij1234567890";
+
+    public static void main(String[]args)throws Exception {
+        int opStrLen = 1;
+        int ratio = 80;
+        int turn = 100;
+        int siteOpNum = 10;
+        int iniSize = Integer.parseInt(args[0]) * 1000;
+        String algName = args[1];
+        String fileNumber = args[2];
+        String folderName = args[3];
+
+        Parameters paras = new Parameters(siteOpNum, opStrLen, ratio, turn, iniSize, algName);
+        // test();
+        System.out.println("Testing " + paras.toString());
+
+        String initialDoc = generate(iniSize);
+
+        List < GTAlgorithm > algs = GTAFactory.create(initialDoc, 3, paras.algName);
+        List < TextDocument > docs = new ArrayList < TextDocument > ();
+        for (int i = 0; i < 3; i++) {
+            docs.add(new TextDocument(initialDoc));
+        }
+        test(folderName, fileNumber, paras, algs, docs);
+        System.out.println("running");
+    }
+
+    public static void logTime(String folderName, String fileName, List < Long > localTimes, List < Long > remoteTimes, List < Integer > memorySize) {
+        PrintWriter writerL;
+        PrintWriter writerR;
+        PrintWriter writerM;
+        try {
+            writerL = new PrintWriter(new FileWriter(folderName + "//Local//" + fileName, true));
+            for (Long time: localTimes) {
+                writerL.println(time);
+            }
+            writerL.flush();
+            writerL.close();
+
+            writerR = new PrintWriter(new FileWriter(folderName + "//Remote//" + fileName, true));
+            for (Long time: remoteTimes) {
+                writerR.println(time);
+            }
+            writerR.flush();
+            writerR.close();
+
+            writerM = new PrintWriter(new FileWriter(folderName + "//Memory//" + fileName, true));
+            for (Integer m: memorySize) {
+                writerM.println(m);
+            }
+
+            writerM.flush();
+            writerM.close();
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
+    }
+
+    public static void test(String folderName, String fileNumber, Parameters paras, List < GTAlgorithm > algList, List < TextDocument > replicas) {
+
+        long startTime = 0;
+        long totalTime = 0;
+        List < Long > localTimes = new ArrayList < Long > ();
+        List < Long > remoteTimes = new ArrayList < Long > ();
+        List < Integer > memorySize = new ArrayList < Integer > ();
+
+        for (int k = 0; k < paras.turn; k++) {
+            //站点0产生本地操作
+            GTAlgorithm gt0 = algList.get(0);
+            TextDocument doc0 = replicas.get(0);
+            ArrayList < String > site0RemoteOps = new ArrayList < String > ();
+			totalTime = 0;
+
+            for (int j = 0; j < paras.siteOpNum; j++) {
+
+                StringOperation sop = generateOperation(paras.ratio, paras.opStrLen, doc0);
+                startTime = System.nanoTime();
+                String aop = gt0.LOH(sop);
+                totalTime = totalTime + (System.nanoTime() - startTime) / 1000;
+                site0RemoteOps.add(aop);
+            }
+            if (k == paras.turn - 1) {
+                localTimes.add(totalTime / paras.siteOpNum);
+            }
+            //站点1产生本地操作-----------------------------//
+            GTAlgorithm gt1 = algList.get(1);
+            TextDocument doc1 = replicas.get(1);
+            ArrayList < String > site1RemoteOps = new ArrayList < String > ();
+            for (int j = 0; j < paras.siteOpNum; j++) {
+                StringOperation sop = generateOperation(paras.ratio, paras.opStrLen, doc1);
+                site1RemoteOps.add(gt1.LOH(sop));
+            }
+
+            //站点2产生本地操作-------------------------------//
+            GTAlgorithm gt2 = algList.get(2);
+            TextDocument doc2 = replicas.get(2);
+            ArrayList < String > site2RemoteOps = new ArrayList < String > ();
+            for (int j = 0; j < paras.siteOpNum; j++) {
+                StringOperation sop = generateOperation(paras.ratio, paras.opStrLen, doc2);
+                site2RemoteOps.add(gt2.LOH(sop));
+            }
+
+            //站点0处理远程操作（来自站点1和2）--------------------//
+            //copy
+            totalTime = 0;
+
+            for (int i = 0; i < paras.siteOpNum; i++) {
+                String aop1 = site1RemoteOps.get(i);
+                startTime = System.nanoTime();
+                StringOperation sop = gt0.ROH(aop1);
+                totalTime = totalTime + (System.nanoTime() - startTime) / 1000;
+                doc0.execute(sop);
+            }
+
+            for (int i = 0; i < paras.siteOpNum; i++) {
+                String aop2 = site2RemoteOps.get(i);
+                startTime = System.nanoTime();
+                StringOperation sop = gt0.ROH(aop2);
+                totalTime = totalTime + (System.nanoTime() - startTime) / 1000;
+                doc0.execute(sop);
+            }
+
+            if (k == paras.turn - 1) {
+                remoteTimes.add(totalTime / (paras.siteOpNum * 2));
+            }
+            //站点1处理远程操作（来自站点0和2）--------------------//
+
+            for (int i = 0; i < paras.siteOpNum; i++) {
+                String aop = site0RemoteOps.get(i);
+
+                StringOperation sop = gt1.ROH(aop);
+                doc1.execute(sop);
+            }
+
+            for (int i = 0; i < paras.siteOpNum; i++) {
+                String aop = site2RemoteOps.get(i);
+
+                StringOperation sop = gt1.ROH(aop);
+                doc1.execute(sop);
+            }
+
+            //站点2处理远程操作（来自站点0和1）
+
+            for (int i = 0; i < paras.siteOpNum; i++) {
+                String aop = site0RemoteOps.get(i);
+                StringOperation sop = gt2.ROH(aop);
+                doc2.execute(sop);
+            }
+
+            for (int i = 0; i < paras.siteOpNum; i++) {
+                String aop = site1RemoteOps.get(i);
+                StringOperation sop = gt2.ROH(aop);
+                doc2.execute(sop);
+            }
+
+            if (k == paras.turn - 1) {
+                memorySize.add(algList.get(0).memorySize());
+            }
+            //logTime(paras.toString() + "_remoteTime.txt", time);
+        }
+        logTime(folderName, fileNumber + "_" + paras.toString() + ".txt", localTimes, remoteTimes, memorySize);
+        return;
+    }
+
+    public static StringOperation generateOperation(int ratio, int opStrLen, TextDocument doc) {
+        int chance = rand.nextInt(100);
+        StringOperation sop = null;
+        if (chance < ratio) {
+            int len = doc.getLength();
+            int insPos = rand.nextInt(len + 1);
+            String str = generate(opStrLen);
+            doc.insert(insPos, str);
+            sop = StringOperation.createInsOperation(insPos, str);
+        } else {
+            int len = doc.getLength();
+            if (len > opStrLen) {
+                int delPos = rand.nextInt(len - opStrLen);
+                doc.delete(delPos, opStrLen);
+                sop = StringOperation.createDelOperation(delPos, opStrLen);
+            } else {
+                int insPos = rand.nextInt(len + 1);
+                String str = generate(opStrLen);
+                doc.insert(insPos, str);
+                sop = StringOperation.createInsOperation(insPos, str);
+            }
+        }
+
+        return sop;
+    }
+
+    public static String generate(int num) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < num; i++) {
+            sb.append(S.charAt(rand.nextInt(20)));
+        }
+        return sb.toString();
+    }
+}
